@@ -207,7 +207,7 @@ public class ClientTickHandler
 
 			if(bootStack != null && bootStack.getItem() instanceof ItemFreeRunners)
 			{
-				mc.thePlayer.stepHeight = 1.002F;
+				//mc.thePlayer.stepHeight = 1.002F;
 			}
 			else {
 				if(mc.thePlayer.stepHeight == 1.002F)

@@ -42,7 +42,7 @@ public class CommonPlayerTickHandler
 		
 		if(feetStack != null && feetStack.getItem() instanceof ItemFreeRunners)
 		{
-			player.stepHeight = 1.002F;
+			//player.stepHeight = 1.002F;
 		}
 		else {
 			if(player.stepHeight == 1.002F)
