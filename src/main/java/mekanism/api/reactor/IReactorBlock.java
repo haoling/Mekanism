@@ -1,5 +1,6 @@
 package mekanism.api.reactor;
 
+@Deprecated
 public interface IReactorBlock
 {
 	public boolean isFrame();

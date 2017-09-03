@@ -5,6 +5,7 @@ import mekanism.api.gas.GasTank;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.fluids.FluidTank;
 
+@Deprecated
 public interface IFusionReactor extends IHeatTransfer
 {
 	public void addTemperatureFromEnergyInput(double energyAdded);

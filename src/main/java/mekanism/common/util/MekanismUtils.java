@@ -1,5 +1,6 @@
 package mekanism.common.util;
 
+import com.mojang.authlib.GameProfile;
 import ic2.api.energy.EnergyNet;
 
 import java.io.BufferedReader;
@@ -12,22 +13,19 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import mcmultipart.multipart.Multipart;
 import mekanism.api.Chunk3D;
 import mekanism.api.Coord4D;
 import mekanism.api.EnumColor;
 import mekanism.api.IMekWrench;
-import mekanism.api.MekanismConfig.client;
-import mekanism.api.MekanismConfig.general;
 import mekanism.api.gas.Gas;
 import mekanism.api.gas.GasStack;
 import mekanism.api.transmitters.TransmissionType;
-import mekanism.api.util.UnitDisplayUtils;
-import mekanism.api.util.UnitDisplayUtils.ElectricUnit;
-import mekanism.api.util.UnitDisplayUtils.TemperatureUnit;
 import mekanism.common.Mekanism;
 import mekanism.common.MekanismBlocks;
+import mekanism.common.MekanismFluids;
 import mekanism.common.MekanismItems;
 import mekanism.common.OreDictCache;
 import mekanism.common.Tier.BaseTier;
@@ -47,6 +45,9 @@ import mekanism.common.base.IModule;
 import mekanism.common.base.IRedstoneControl;
 import mekanism.common.base.ISideConfiguration;
 import mekanism.common.base.IUpgradeTile;
+import mekanism.common.block.states.BlockStateMachine.MachineType;
+import mekanism.common.config.MekanismConfig.client;
+import mekanism.common.config.MekanismConfig.general;
 import mekanism.common.inventory.InventoryPersonalChest;
 import mekanism.common.inventory.container.ContainerPersonalChest;
 import mekanism.common.item.ItemBlockBasic;
@@ -58,6 +59,8 @@ import mekanism.common.network.PacketPersonalChest.PersonalChestPacketType;
 import mekanism.common.tile.TileEntityAdvancedBoundingBlock;
 import mekanism.common.tile.TileEntityBoundingBlock;
 import mekanism.common.tile.TileEntityPersonalChest;
+import mekanism.common.util.UnitDisplayUtils.ElectricUnit;
+import mekanism.common.util.UnitDisplayUtils.TemperatureUnit;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.state.IBlockState;
@@ -82,17 +85,21 @@ import net.minecraft.util.text.TextComponentString;
 import net.minecraft.world.EnumSkyBlock;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
+import net.minecraftforge.common.UsernameCache;
 import net.minecraftforge.fluids.BlockFluidBase;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidBlock;
+import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraftforge.oredict.OreDictionary;
 import net.minecraftforge.oredict.ShapedOreRecipe;
 import buildcraft.api.tools.IToolWrench;
 import cofh.api.item.IToolHammer;
+
+import javax.annotation.Nonnull;
 
 /**
  * Utilities used by Mekanism. All miscellaneous methods are located here.
@@ -104,6 +111,8 @@ public final class MekanismUtils
 	public static final EnumFacing[] SIDE_DIRS = new EnumFacing[] {EnumFacing.NORTH, EnumFacing.SOUTH, EnumFacing.WEST, EnumFacing.EAST};
 
 	public static final Map<String, Class<?>> classesFound = new HashMap<String, Class<?>>();
+
+	private static final List<UUID> warnedFails = new ArrayList<>();
 
 	/**
 	 * Checks for a new version of Mekanism.
@@ -168,7 +177,7 @@ public final class MekanismUtils
 	{
 		Mekanism.donators.clear();
 
-		for(String s : getHTML("https://dl.dropbox.com/u/90411166/Donators/Mekanism.txt"))
+		for(String s : getHTML("http://aidancbrady.com/data/capes/Mekanism.txt"))
 		{
 			Mekanism.donators.add(s);
 		}
@@ -360,7 +369,7 @@ public final class MekanismUtils
 	 */
 	public static ItemStack getFactory(FactoryTier tier, RecipeType type)
 	{
-		ItemStack itemstack = new ItemStack(MekanismBlocks.MachineBlock, 1, 5+tier.ordinal());
+		ItemStack itemstack = new ItemStack(MekanismBlocks.MachineBlock, 1, MachineType.BASIC_FACTORY.ordinal()+tier.ordinal());
 		((IFactory)itemstack.getItem()).setRecipeType(type.ordinal(), itemstack);
 		return itemstack;
 	}
@@ -840,7 +849,7 @@ public final class MekanismUtils
 				return new FluidStack(FluidRegistry.WATER, Fluid.BUCKET_VOLUME);
 			}
 			else {
-				return new FluidStack(FluidRegistry.getFluid("heavywater"), 10);
+				return new FluidStack(MekanismFluids.HeavyWater, 10);
 			}
 		}
 		else if((block == Blocks.LAVA || block == Blocks.FLOWING_LAVA) && state.getValue(BlockLiquid.LEVEL) == 0)
@@ -1191,6 +1200,15 @@ public final class MekanismUtils
 	{
 		return Mekanism.hooks.TeslaLoaded && !general.blacklistTesla;
 	}
+	
+	/**
+	 * Whether or not Forge power should be used.
+	 * @return if Forge power should be used
+	 */
+	public static boolean useForge()
+	{
+		return !general.blacklistForge;
+	}
 
 	/**
 	 * Gets a clean view of a coordinate value without the dimension ID.
@@ -1341,7 +1359,7 @@ public final class MekanismUtils
 			return new ItemStack(dmgItems[0].getItem(), 1, solve);
 		}
 
-		List<IRecipe> list = (List<IRecipe>)((ArrayList<IRecipe>)CraftingManager.getInstance().getRecipeList()).clone();
+		List<IRecipe> list = new ArrayList<>(CraftingManager.getInstance().getRecipeList());
 		
 		for(IRecipe recipe : list)
 		{
@@ -1374,7 +1392,7 @@ public final class MekanismUtils
 	
 	/**
 	 * Whether or not a given EntityPlayer is considered an Op.
-	 * @param player - player to check
+	 * @param p - player to check
 	 * @return if the player has operator privileges
 	 */
 	public static boolean isOp(EntityPlayer p)
@@ -1491,6 +1509,23 @@ public final class MekanismUtils
 		} catch(Throwable t) {}
 		
 		return false;
+	}
+
+	@Nonnull
+	public static String getLastKnownUsername(UUID uuid)
+	{
+		String ret = UsernameCache.getLastKnownUsername(uuid);
+		if (ret == null && !warnedFails.contains(uuid) && FMLCommonHandler.instance().getEffectiveSide() == Side.SERVER){ // see if MC/Yggdrasil knows about it?!
+			GameProfile gp = FMLCommonHandler.instance().getMinecraftServerInstance().getPlayerProfileCache().getProfileByUUID(uuid);
+			if (gp != null){
+				ret = gp.getName();
+			}
+		}
+		if (ret == null && !warnedFails.contains(uuid)){
+			Mekanism.logger.warn("Failed to retrieve username for UUID {}, you might want to add it to the JSON cache", uuid);
+			warnedFails.add(uuid);
+		}
+		return ret != null ? ret : "<???>";
 	}
 
 	public static enum ResourceType

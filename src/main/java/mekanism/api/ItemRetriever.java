@@ -9,7 +9,10 @@ import net.minecraft.item.ItemStack;
  * class.
  * @author AidanBrady
  *
+ * @deprecated backwards compatibility only.
+ *
  */
+@Deprecated
 public final class ItemRetriever
 {
 	/** The 'MekanismItems' class that items are retrieved from. */
